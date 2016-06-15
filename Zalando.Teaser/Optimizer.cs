@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using Accord.Math.Optimization;
 using Zalando.Teaser.Geometry;
 using Zalando.Teaser.Map;
 using Zalando.Teaser.ViewModel;
@@ -10,36 +11,24 @@ namespace Zalando.Teaser
 {
     public class Optimizer
     {
-        private SortedList<double, TileInfo> sortedTiles = new SortedList<double, TileInfo>(new DescendingDoubleComparer());
         private Distribution distribution = new Distribution();
         private BackgroundWorker worker;
         private MainViewModel viewModel;
 
-        private const int maxIterations = 5 * 1000000;
+        private BroydenFletcherGoldfarbShanno bfgs = null;
 
         public Optimizer( MainViewModel viewModel )
         {
             this.viewModel = viewModel;
+
+            bfgs = new BroydenFletcherGoldfarbShanno(2, Function, Gradient);
+            bfgs.Progress += Bfgs_Progress;
         }
 
         public bool CancelRequested { get; private set; }
 
-        public void Start(double latitude, double longitude, int bufferTiles = 2)
+        public void Start(double latitude, double longitude)
         {
-            Point pixel = MapMath.LatLongToPixel(latitude, longitude, 12);
-            int tileX = (int)Math.Round(pixel.X) / 256;
-            int tileY = (int)Math.Round(pixel.Y) / 256;
-
-            for( int xTile = tileX - bufferTiles; xTile < tileX + bufferTiles + 1; xTile++ )
-            {
-                for( int yTile = tileY - bufferTiles; yTile < tileY + bufferTiles + 1; yTile++ )
-                {
-                    TileInfo tileInfo = CreateTile(xTile, yTile, 12);
-
-                    AddToList(tileInfo);
-                }
-            }
-
             worker = new BackgroundWorker();
             worker.WorkerReportsProgress = true;
             worker.WorkerSupportsCancellation = true;
@@ -48,7 +37,7 @@ namespace Zalando.Teaser
             worker.ProgressChanged += Worker_ProgressChanged;
             worker.DoWork += Worker_DoWork;
 
-            worker.RunWorkerAsync();
+            worker.RunWorkerAsync(new LatLong(latitude, longitude));
         }
 
         public void Stop()
@@ -59,98 +48,66 @@ namespace Zalando.Teaser
 
         //-----------------------------------------------------------------------
 
-        private TileInfo CreateTile(int xTile, int yTile, int zoom)
-        {
-            long pixelX = (long)xTile * 256 + 127;
-            long pixelY = (long)yTile * 256 + 127;
-
-            LatLong location = MapMath.PixelToLatLong(pixelX, pixelY, zoom);
-
-            TileInfo tileInfo = new TileInfo() { X = xTile, Y = yTile, Zoom = zoom, Density = distribution.CalculateDensity(location.Latitude, location.Longitude) };
-
-            return tileInfo;
-        }
-
-        private void AddToList(TileInfo tileInfo)
-        {
-            if (!sortedTiles.ContainsKey(tileInfo.Density))
-                sortedTiles.Add(tileInfo.Density, tileInfo);
-        }
-
-        //-----------------------------------------------------------------------
-
         private void Worker_DoWork(object sender, DoWorkEventArgs e)
         {
-            TileInfo bestTile = sortedTiles.First().Value;
-            TileInfo incumbent = bestTile;
+            LatLong startLocation = e.Argument as LatLong;
+            double[] v = new double[] { startLocation.Latitude, startLocation.Longitude };
 
-            int iterationCount = 0;
+            bfgs.Maximize(v);
 
-            while(!worker.CancellationPending && iterationCount < maxIterations )
-            {
-                sortedTiles.RemoveAt(0);
+            e.Result = bfgs.Solution;
+        }
 
-                if(bestTile.Zoom < 23)
-                {
-                    AddToList(CreateTile(bestTile.X * 2    , bestTile.Y * 2    , bestTile.Zoom + 1));
-                    AddToList(CreateTile(bestTile.X * 2 + 1, bestTile.Y * 2    , bestTile.Zoom + 1));
-                    AddToList(CreateTile(bestTile.X * 2    , bestTile.Y * 2 + 1, bestTile.Zoom + 1));
-                    AddToList(CreateTile(bestTile.X * 2 + 1, bestTile.Y * 2 + 1, bestTile.Zoom + 1));
-                }
+        private void Bfgs_Progress(object sender, OptimizationProgressEventArgs e)
+        {
+            worker.ReportProgress(0, e.Solution);
 
-                bestTile = sortedTiles.First().Value;
-                if (bestTile.Density > incumbent.Density)
-                    incumbent = bestTile;
-
-                if( iterationCount++ % 100 == 0)
-                {
-                    int percent = (int)((double)iterationCount / (double)maxIterations * 100.0);
-                    worker.ReportProgress(percent, incumbent);
-                }
-            }
-            e.Result = incumbent;
         }
 
         private void Worker_ProgressChanged(object sender, ProgressChangedEventArgs e)
         {
-            TileInfo tileInfo = e.UserState as TileInfo;
+            double[] solution = (double[])e.UserState;
 
-            if( tileInfo != null )
-            {
-                LatLong location = MapMath.PixelToLatLong(tileInfo.X * 256 + 127, tileInfo.Y * 256 + 127, tileInfo.Zoom);
-                MapControl.Location center = new MapControl.Location(location.Latitude, location.Longitude);
-
-                viewModel.IsBestSolutionVisible = true;
-                viewModel.BestSolution = center;
-                viewModel.ProgressPercent = e.ProgressPercentage;
-                viewModel.IsProgressBarVisible = true;
-            }
+            viewModel.IsBestSolutionVisible = true;
+            viewModel.BestSolution = new MapControl.Location(solution[0], solution[1]);
+            viewModel.ProgressPercent = e.ProgressPercentage;
+            viewModel.IsProgressBarVisible = true;
         }
 
         private void Worker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
         {
             if( e.Error == null )
             {
-                TileInfo tileInfo = e.Result as TileInfo;
-                LatLong location = MapMath.PixelToLatLong(tileInfo.X * 256 + 127, tileInfo.Y * 256 + 127, tileInfo.Zoom);
-                MapControl.Location center = new MapControl.Location(location.Latitude, location.Longitude);
+                double[] solution = (double[])e.Result;
 
-                viewModel.Zoom = tileInfo.Zoom;
-                viewModel.Center = center;
+                viewModel.Center = new MapControl.Location(solution[0], solution[1]);
+                viewModel.Zoom = 21;
 
                 viewModel.IsProgressBarVisible = false;
             }
         }
-    }
 
-    /// <summary>
-    /// Sort doubles in descending order
-    /// </summary>
-    public class DescendingDoubleComparer : IComparer<double>
-    {
-        public int Compare(double x, double y)
+        //---------------------------------------------------------------------
+
+        private double Function(double[] x)
         {
-            return y.CompareTo(x);
+            return distribution.CalculateDensity(x[0], x[1]);
+        }
+
+        private double[] Gradient(double[] vector)
+        {
+            double x = vector[0];
+            double y = vector[1];
+            double[] g = new double[2] { 0, 0 };
+            double h = 1e-5;
+
+            Func<double,double,double> f = distribution.CalculateDensity;
+            
+            // Five-point stencil
+            g[0] = (-f(x+2*h,y) + 8*f(x+h,y) - 8*f(x-h,y) + f(x-2*h,y)) / (12*h);
+            g[1] = (-f(x,y+2*h) + 8*f(x,y+h) - 8*f(x,y-h) + f(x,y-2*h)) / (12*h);
+
+            return g;
         }
     }
 }

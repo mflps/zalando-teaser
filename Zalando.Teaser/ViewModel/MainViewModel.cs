@@ -391,7 +391,7 @@ namespace Zalando.Teaser.ViewModel
         {
             optimizer = new Optimizer(this);
 
-            optimizer.Start(brandenburgGate.Latitude, brandenburgGate.Longitude);
+            optimizer.Start(52.5, 13.5);
         }
 
         private void StopOptimizer()
