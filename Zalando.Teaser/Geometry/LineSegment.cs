@@ -17,16 +17,25 @@
             Vector v = q - p1;
             double r = (u * v) / (u * u);
 
-            if( r >= 0 && r <= 1)
+            if( r < 0 )
+            {
+                Vector w = p1 - q;
+
+                return w.Norm;
+            }
+            else if( r >= 0 && r <= 1)
             {
                 Point p = p1 + r * u;
                 Vector qp = p - q;
 
                 return qp.Norm;
             }
+            else
+            {
+                Vector w = p2 - q;
 
-            // The point has no projection on the line segment.
-            return -1;
+                return w.Norm;
+            }
         }
     }
 }

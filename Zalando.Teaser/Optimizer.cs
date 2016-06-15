@@ -15,12 +15,14 @@ namespace Zalando.Teaser
         private BackgroundWorker worker;
         private MainViewModel viewModel;
 
-        private const int maxIterations = 1000000;
+        private const int maxIterations = 5 * 1000000;
 
         public Optimizer( MainViewModel viewModel )
         {
             this.viewModel = viewModel;
         }
+
+        public bool CancelRequested { get; private set; }
 
         public void Start(double latitude, double longitude, int bufferTiles = 2)
         {
@@ -49,12 +51,18 @@ namespace Zalando.Teaser
             worker.RunWorkerAsync();
         }
 
+        public void Stop()
+        {
+            CancelRequested = true;
+            worker.CancelAsync();
+        }
+
         //-----------------------------------------------------------------------
 
         private TileInfo CreateTile(int xTile, int yTile, int zoom)
         {
-            int pixelX = xTile * 256 + 127;
-            int pixelY = yTile * 256 + 127;
+            long pixelX = (long)xTile * 256 + 127;
+            long pixelY = (long)yTile * 256 + 127;
 
             LatLong location = MapMath.PixelToLatLong(pixelX, pixelY, zoom);
 
@@ -65,8 +73,8 @@ namespace Zalando.Teaser
 
         private void AddToList(TileInfo tileInfo)
         {
-            if (!sortedTiles.ContainsKey(tileInfo.Heuristic))
-                sortedTiles.Add(tileInfo.Heuristic, tileInfo);
+            if (!sortedTiles.ContainsKey(tileInfo.Density))
+                sortedTiles.Add(tileInfo.Density, tileInfo);
         }
 
         //-----------------------------------------------------------------------
@@ -78,14 +86,17 @@ namespace Zalando.Teaser
 
             int iterationCount = 0;
 
-            while( bestTile.Zoom < 24 && !worker.CancellationPending && iterationCount < maxIterations )
+            while(!worker.CancellationPending && iterationCount < maxIterations )
             {
                 sortedTiles.RemoveAt(0);
 
-                AddToList(CreateTile(bestTile.X * 2    , bestTile.Y * 2    , bestTile.Zoom + 1));
-                AddToList(CreateTile(bestTile.X * 2 + 1, bestTile.Y * 2    , bestTile.Zoom + 1));
-                AddToList(CreateTile(bestTile.X * 2    , bestTile.Y * 2 + 1, bestTile.Zoom + 1));
-                AddToList(CreateTile(bestTile.X * 2 + 1, bestTile.Y * 2 + 1, bestTile.Zoom + 1));
+                if(bestTile.Zoom < 23)
+                {
+                    AddToList(CreateTile(bestTile.X * 2    , bestTile.Y * 2    , bestTile.Zoom + 1));
+                    AddToList(CreateTile(bestTile.X * 2 + 1, bestTile.Y * 2    , bestTile.Zoom + 1));
+                    AddToList(CreateTile(bestTile.X * 2    , bestTile.Y * 2 + 1, bestTile.Zoom + 1));
+                    AddToList(CreateTile(bestTile.X * 2 + 1, bestTile.Y * 2 + 1, bestTile.Zoom + 1));
+                }
 
                 bestTile = sortedTiles.First().Value;
                 if (bestTile.Density > incumbent.Density)

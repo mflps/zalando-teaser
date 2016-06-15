@@ -34,6 +34,20 @@ namespace Zalando.Teaser.Map
             return latLong;
         }
 
+        public static LatLong PixelToLatLong(long pixelX, long pixelY, int zoom)
+        {
+            LatLong latLong = new LatLong();
+            long mapSize = ((uint)256 << zoom);
+
+            double x = (Clip(pixelX, 0, mapSize - 1) / mapSize) - 0.5;
+            double y = 0.5 - (Clip(pixelY, 0, mapSize - 1) / mapSize);
+
+            latLong.Latitude = 90 - 360 * Math.Atan(Math.Exp(-y * 2 * Math.PI)) / Math.PI;
+            latLong.Longitude = 360 * x;
+
+            return latLong;
+        }
+
         public static Point LatLongToPixel( LatLong location, int zoom )
         {
             double x = (location.Longitude + 180) / 360;

@@ -75,10 +75,10 @@ namespace Zalando.Teaser.Map
                 LineSegment line = new LineSegment(riverSpree[i], riverSpree[i + 1]);
                 double d = line.DistanceTo(pt);
 
-                // If d == -1 then the point has no orthogonal projection on the line.
-                if (d >= 0.0)
-                    distance = Math.Min(distance, d);
+                distance = Math.Min(distance, d);
             }
+            if(distance == double.MaxValue)
+                throw new InvalidOperationException();
             return distance == double.MaxValue ? -1 : distance;
         }
 

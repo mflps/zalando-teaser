@@ -72,7 +72,6 @@
             <map:MapScale Margin="4" Opacity="0.8" HorizontalAlignment="Left" Background="Transparent"/>
 
             <TextBlock Margin="4" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="White"
-                       Visibility="{Binding IsDensityVisible,Converter={StaticResource BoolToVisibility}}" 
                        Text="{Binding Density,StringFormat=F5}" />
         </map:Map>
 
@@ -85,7 +84,8 @@
                              Minimum="0" Maximum="100" Value="{Binding ProgressPercent}"/>
             </StatusBarItem>
             <StatusBarItem HorizontalAlignment="Right">
-                <Button Content="Stop" Padding="4,0" Visibility="{Binding IsProgressBarVisible,Converter={StaticResource BoolToVisibility}}" />
+                <Button Content="Stop" Padding="4,0" Visibility="{Binding IsProgressBarVisible,Converter={StaticResource BoolToVisibility}}"
+                        Command="{Binding StopOptimizerCommand}"/>
             </StatusBarItem>
         </StatusBar>
     </Grid>

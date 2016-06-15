@@ -46,6 +46,8 @@ namespace Zalando.Teaser.ViewModel
 
         private Distribution distribution = new Distribution();
 
+        private Optimizer optimizer = null;
+
         /// <summary>
         /// Initializes a new instance of the MainViewModel class.
         /// </summary>
@@ -87,10 +89,12 @@ namespace Zalando.Teaser.ViewModel
             if( !IsInDesignMode )
             {
                 FindMaximumCommand = new RelayCommand(FindMaximum);
+                StopOptimizerCommand = new RelayCommand(StopOptimizer);
             }
         }
 
         public RelayCommand FindMaximumCommand { get; private set; }
+        public RelayCommand StopOptimizerCommand { get; private set; }
 
         public LocationCollection RiverSpree
         {
@@ -385,9 +389,15 @@ namespace Zalando.Teaser.ViewModel
 
         private void FindMaximum()
         {
-            Optimizer optimizer = new Optimizer(this);
+            optimizer = new Optimizer(this);
 
             optimizer.Start(brandenburgGate.Latitude, brandenburgGate.Longitude);
+        }
+
+        private void StopOptimizer()
+        {
+            if( optimizer != null )
+                optimizer.Stop();
         }
     }
 }
